@@ -2,43 +2,22 @@
 #include<Windows.h>
 #include<tlhelp32.h>
 #include<shlwapi.h>
-#pragma comment(lib, "Shlwapi.lib")//pragma 
+#pragma comment(lib, "Shlwapi.lib")//pragma
 
 
 
 
-typedef struct tagTHREADENTRY32
-{
-	DWORD   dwSize;
-	DWORD   cntUsage;
-	DWORD   th32ThreadID;       // this thread
-	DWORD   th32OwnerProcessID; // Process this thread is associated with
-	LONG    tpBasePri;
-	LONG    tpDeltaPri;
-	DWORD   dwFlags;
-} THREADENTRY32;
+//typedef struct tagTHREADENTRY32
+//{
+//    DWORD   dwSize;
+//    DWORD   cntUsage;
+//    DWORD   th32ThreadID;       // this thread
+//    DWORD   th32OwnerProcessID; // Process this thread is associated with
+//    LONG    tpBasePri;
+//    LONG    tpDeltaPri;
+//    DWORD   dwFlags;
+//} THREADENTRY32;
 
-
-//get process from users 
-//CreateToolhelp32Snapshot(
-//	DWORD dwFlags,
-//	DWORD th32ProcessID
-//);
-
-//
-// The th32ProcessID argument is only used if TH32CS_SNAPHEAPLIST or
-// TH32CS_SNAPMODULE is specified. th32ProcessID == 0 means the current
-// process.
-//
-// NOTE that all of the snapshots are global except for the heap and module
-//      lists which are process specific. To enumerate the heap or module
-//      state for all WIN32 processes call with TH32CS_SNAPALL and the
-//      current process. Then for each process in the TH32CS_SNAPPROCESS
-//      list that isn't the current process, do a call with just
-//      TH32CS_SNAPHEAPLIST and/or TH32CS_SNAPMODULE.
-//
-// dwFlags
-//
 //#define TH32CS_SNAPHEAPLIST 0x00000001
 //#define TH32CS_SNAPPROCESS  0x00000002
 //#define TH32CS_SNAPTHREAD   0x00000004
@@ -48,60 +27,71 @@ typedef struct tagTHREADENTRY32
 //#define TH32CS_INHERIT      0x80000000
 //
 
+DWORD modulesNuber = 0;
+DWORD counter = 0;
+void printModules(DWORD th32ProcessID) {
+    HANDLE moduleOfprocess = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, th32ProcessID);
+    MODULEENTRY32 m;
+    m.dwSize = sizeof(MODULEENTRY32);
+    BOOL n = Module32First(moduleOfprocess, &m);
+    while (n == TRUE) {
+        printf("module ID = %d | %ws\n", m.th32ModuleID, m.szExePath);
 
-void printProcessMoudle(DWORD th32ProcessID);
+        n = Module32Next(moduleOfprocess, &m);
+        modulesNuber++;
 
+    }
+    counter += modulesNuber;
 
+    CloseHandle(moduleOfprocess);
 
-
-
-void printProcessMoudle(DWORD th32ProcessID) {
-	HANDLE getModule = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, th32ProcessID);
-	if (getModule == INVALID_HANDLE_VALUE) {
-		printf("TH32CS_SNAPMODULE32: ERROR handle is invalied\n");
-		return;
-	}
-	MODULEENTRY32 m;
-	m.dwSize = sizeof(MODULEENTRY32);
-	BOOL im = Module32First(getModule, &m);
-	while (im == TRUE) {
-		printf("the SNAP MODULE32 ID = %d | %ws\n", m.th32ModuleID, m.szExePath);
-		im = Module32Next(getModule, &m);
-	}
-	CloseHandle(getModule);
 }
+DWORD GetTargetProcessIDName(PCTSTR pName) {
+    HANDLE snapProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+    if (snapProcess == INVALID_HANDLE_VALUE)
+    {
+        MessageBox(NULL, L"Error: unable to create toolhelp snapshot", L"Loader", NULL);
+        return FALSE;
+    }
+    PROCESSENTRY32 pe;
+    pe.dwSize = sizeof(PROCESSENTRY32);
+    BOOL i = Process32First(snapProcess, &pe);
+    DWORD processID = 0;
+    DWORD numberOfProcess = 0;
 
+    while (i == TRUE) {
+        printf("processNumber = %d process = %d | %ws\n", numberOfProcess, pe.th32ProcessID, pe.szExeFile);
+        if (StrStrIW(pe.szExeFile, pName)) {
+            processID = pe.th32ProcessID;
+            printf("found process id in loop\n");
+        }
+        printModules(pe.th32ProcessID);
+        i = Process32Next(snapProcess, &pe);
+        numberOfProcess++;
+
+    }
+    printf("the number of process is residing system = %d  | Module = %d\n\n\n", numberOfProcess, counter);
+    CloseHandle(snapProcess);
+}
 
 void DetectSuspiciousThingsAboutProcess(DWORD processId)
 {
-	printProcessMoudle(processId);
+    /*printProcessMoudle(processId);*/
 
-	//Get the DOS & NT header of target process
+    //Get the DOS & NT header of target process
 
 
 
 }
 
-int main() {
-	HANDLE creatSnapShoot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
-	if (creatSnapShoot == INVALID_HANDLE_VALUE) {
-		printf("TH32CS_SNAPALL: handle is invalied\n");
-		return 0;
-	}
-	PROCESSENTRY32 pe;
-	pe.dwSize = sizeof(PROCESSENTRY32);
-	BOOL i = Process32First(creatSnapShoot, &pe);
 
-	while (i == TRUE) {
-		printf("The Process ID is = %d | %ws | the Moudle %d \n", pe.th32ProcessID, pe.szExeFile, pe.th32ModuleID);
+DWORD main() {
 
-		DetectSuspiciousThingsAboutProcess(pe.th32ProcessID);
-
-		i = Process32Next(creatSnapShoot, &pe);
-	}
-	CloseHandle(creatSnapShoot);
+    DWORD processID = GetTargetProcessIDName(L"sublime_text.exe");
+    printf("process id found = %d\n", processID);
 
 
-	getchar();
-	return 0;
+
+    getchar();
+    return 0;
 }
