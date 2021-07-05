@@ -6,6 +6,19 @@
 
 
 
+
+typedef struct tagTHREADENTRY32
+{
+	DWORD   dwSize;
+	DWORD   cntUsage;
+	DWORD   th32ThreadID;       // this thread
+	DWORD   th32OwnerProcessID; // Process this thread is associated with
+	LONG    tpBasePri;
+	LONG    tpDeltaPri;
+	DWORD   dwFlags;
+} THREADENTRY32;
+
+
 //get process from users 
 //CreateToolhelp32Snapshot(
 //	DWORD dwFlags,
@@ -65,6 +78,8 @@ void DetectSuspiciousThingsAboutProcess(DWORD processId)
 
 	//Get the DOS & NT header of target process
 
+
+
 }
 
 int main() {
@@ -79,13 +94,13 @@ int main() {
 
 	while (i == TRUE) {
 		printf("The Process ID is = %d | %ws | the Moudle %d \n", pe.th32ProcessID, pe.szExeFile, pe.th32ModuleID);
-	
+
 		DetectSuspiciousThingsAboutProcess(pe.th32ProcessID);
 
 		i = Process32Next(creatSnapShoot, &pe);
 	}
 	CloseHandle(creatSnapShoot);
-	
+
 
 	getchar();
 	return 0;
