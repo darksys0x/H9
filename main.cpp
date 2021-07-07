@@ -187,7 +187,7 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
 }
 
 
-DWORD main() {
+int main() {
 
     // DWORD processID = PrintProcessModules(L"sublime_text.exe"); // To get particular process
     //printf("process id found = %d\n", processID);
