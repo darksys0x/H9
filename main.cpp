@@ -2,10 +2,22 @@
 #include<Windows.h>
 #include<tlhelp32.h>
 #include<shlwapi.h>
+#include<libloaderapi.h>
+#include<winternl.h>
+#include <map>
+#include <string>
 #pragma comment(lib, "Shlwapi.lib")//pragma
+#pragma comment(lib, "Kernel32.lib")
 
 
 
+typedef NTSTATUS(__stdcall* NtQueryInfoType)(
+    HANDLE           ProcessHandle,
+    PROCESSINFOCLASS ProcessInformationClass,
+    PVOID            ProcessInformation,
+    ULONG            ProcessInformationLength,
+    PULONG           ReturnLength
+    );
 
 //typedef struct tagTHREADENTRY32
 //{
@@ -27,8 +39,13 @@
 //#define TH32CS_INHERIT      0x80000000
 //
 
-DWORD modulesNuber = 0;
-DWORD counter = 0;
+// std::string = C++ ascii
+// std::wstring = C++ wide string (unicode)
+
+static std::map<std::wstring, bool> modulePathsMap;
+DWORD counter = 0; // numbers of modules in the memory  
+
+//get all Modules in memory affiliated each process 
 void printModules(DWORD th32ProcessID) {
     HANDLE moduleOfprocess = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, th32ProcessID);
     MODULEENTRY32 m;
@@ -38,15 +55,22 @@ void printModules(DWORD th32ProcessID) {
         printf("module ID = %d | %ws\n", m.th32ModuleID, m.szExePath);
 
         n = Module32Next(moduleOfprocess, &m);
-        modulesNuber++;
+
+        std::wstring path(m.szExePath);
+        if (modulePathsMap.find(path) == modulePathsMap.end()) { // if not found
+            modulePathsMap[path] = true; // insert the path into map
+            counter++; // avoid duplicates
+        }
 
     }
-    counter += modulesNuber;
+
 
     CloseHandle(moduleOfprocess);
 
 }
-DWORD GetTargetProcessIDName(PCTSTR pName) {
+
+//  get snap process is residing in the system
+DWORD PrintProcessModules(PCTSTR pName) {
     HANDLE snapProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
     if (snapProcess == INVALID_HANDLE_VALUE)
     {
@@ -70,15 +94,93 @@ DWORD GetTargetProcessIDName(PCTSTR pName) {
         numberOfProcess++;
 
     }
-    printf("the number of process is residing system = %d  | Module = %d\n\n\n", numberOfProcess, counter);
+    printf("the number of process is residing system = %d  | Total Modules = %d (without duplicates)\n\n\n", numberOfProcess, counter);
     CloseHandle(snapProcess);
 }
 
-void DetectSuspiciousThingsAboutProcess(DWORD processId)
-{
-    /*printProcessMoudle(processId);*/
 
+DWORD GetTargetProcessId(PCTSTR pName)
+{
+    HANDLE snapProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+    if (snapProcess == INVALID_HANDLE_VALUE)
+    {
+        MessageBox(NULL, L"Error: unable to create toolhelp snapshot", L"Loader", NULL);
+        return FALSE;
+    }
+    PROCESSENTRY32 pe;
+    pe.dwSize = sizeof(PROCESSENTRY32);
+    BOOL i = Process32First(snapProcess, &pe);
+    DWORD processID = 0;
+
+
+    while (i == TRUE) {
+        if (StrStrIW(pe.szExeFile, pName)) {
+            processID = pe.th32ProcessID;
+            break;
+        }
+        i = Process32Next(snapProcess, &pe);
+
+    }
+    CloseHandle(snapProcess);
+    return processID;
+}
+
+
+
+void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
+{
+    DWORD processId = GetTargetProcessId(pName);
+    if (!processId) {
+        printf("failed to get target process id\n");
+        return;
+    }
     //Get the DOS & NT header of target process
+    HANDLE oP = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId); //open process
+
+    NtQueryInfoType NtQInfoFunction = (NtQueryInfoType)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "NtQueryInformationProcess");  //exported function from DLL
+    if (!NtQInfoFunction) {
+        printf("failed to get NtQueryInformationProcess address\n");
+        CloseHandle(oP);
+        return;
+    }
+    /*  typedef struct _PROCESS_BASIC_INFORMATION {
+          PVOID Reserved1;
+          PPEB PebBaseAddress;
+          PVOID Reserved2[2];
+          ULONG_PTR UniqueProcessId;
+          PVOID Reserved3;
+      } PROCESS_BASIC_INFORMATION;*/
+
+    PROCESS_BASIC_INFORMATION processBasicInfo;
+    DWORD ReturnLength;
+
+    /*_kernel_entry NTSTATUS NtQueryInformationProcess(
+        HANDLE           ProcessHandle,
+        PROCESSINFOCLASS ProcessInformationClass,
+        PVOID            ProcessInformation,
+        ULONG            ProcessInformationLength,
+        PULONG           ReturnLength
+    );*/
+    NtQInfoFunction(oP, ProcessBasicInformation, &processBasicInfo, sizeof(processBasicInfo), &ReturnLength);
+    //part of PEB 
+    PEB peb;
+    /*typedef struct _PROCESS_BASIC_INFORMATION {
+        PVOID Reserved1;
+        PPEB PebBaseAddress;
+        PVOID Reserved2[2];
+        ULONG_PTR UniqueProcessId;
+        PVOID Reserved3;
+    } PROCESS_BASIC_INFORMATION;*/
+    ReadProcessMemory(oP, (PVOID)processBasicInfo.PebBaseAddress, &peb, sizeof(peb), NULL);
+    DWORD beasAddressExe = (DWORD)peb.Reserved3[1];
+    // part of pe header NT & DOS 
+    IMAGE_DOS_HEADER dsheader;
+    ReadProcessMemory(oP, (PVOID)beasAddressExe, &dsheader, sizeof(dsheader), NULL);
+    DWORD baseNTheader = beasAddressExe + dsheader.e_lfanew;
+    IMAGE_NT_HEADERS ntheader;
+    ReadProcessMemory(oP, (PVOID)baseNTheader, &ntheader, sizeof(ntheader), NULL);
+
+
 
 
 
@@ -87,10 +189,11 @@ void DetectSuspiciousThingsAboutProcess(DWORD processId)
 
 DWORD main() {
 
-    DWORD processID = GetTargetProcessIDName(L"sublime_text.exe");
-    printf("process id found = %d\n", processID);
+    // DWORD processID = PrintProcessModules(L"sublime_text.exe"); // To get particular process
+    //printf("process id found = %d\n", processID);
 
 
+    DetectSuspiciousThingsAboutProcess(L"suxt.exe");
 
     getchar();
     return 0;
