@@ -195,6 +195,21 @@ int main() {
 
     DetectSuspiciousThingsAboutProcess(L"suxt.exe");
 
+    //  Descriptor Address
+    DWORD descriptorAddress = importDirectory->VirtualAddress + exeBaseAddress;
+
+    IMAGE_IMPORT_DESCRIPTOR importDescriptor;
+
+    while (true) {
+        ReadProcessMemory(processHandle, (LPVOID)descriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL);
+        if (!importDescriptor.Name)
+            break;
+
+
+        descriptorAddress += sizeof(IMAGE_IMPORT_DESCRIPTOR);
+    }
+
+
     getchar();
     return 0;
 }
