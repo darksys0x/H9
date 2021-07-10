@@ -19,6 +19,10 @@ typedef NTSTATUS(__stdcall* NtQueryInfoType)(
     PULONG           ReturnLength
     );
 
+
+
+
+
 //typedef struct tagTHREADENTRY32
 //{
 //    DWORD   dwSize;
@@ -59,7 +63,7 @@ void printModules(DWORD th32ProcessID) {
         std::wstring path(m.szExePath);
         if (modulePathsMap.find(path) == modulePathsMap.end()) { // if not found
             modulePathsMap[path] = true; // insert the path into map
-            counter++; // avoid duplicates
+            counter++; // this counter is only incremented if path is not found already to avoid duplicates
         }
 
     }
@@ -143,6 +147,13 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
         CloseHandle(oP);
         return;
     }
+
+    /*NTDLL.DLL              kernelbase.dll or kernel32.dll
+    ______________________________________________________________
+    NtWriteVirtualMemory    = WriteProcessMemory
+    NtReadVirtualMemory    = ReadProcessMemory
+    NtProtectVirtualMemory = VirtualProtect*/
+
     /*  typedef struct _PROCESS_BASIC_INFORMATION {
           PVOID Reserved1;
           PPEB PebBaseAddress;
@@ -179,7 +190,25 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
     DWORD baseNTheader = beasAddressExe + dsheader.e_lfanew;
     IMAGE_NT_HEADERS ntheader;
     ReadProcessMemory(oP, (PVOID)baseNTheader, &ntheader, sizeof(ntheader), NULL);
+    //discriptor 
 
+
+    DWORD discriptAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe;
+    
+    IMAGE_IMPORT_DESCRIPTOR importDescriptor;
+    
+    
+    while (discriptAddress)
+    {
+        // call readprocessmemory
+
+        if (!importDescriptor.Name)
+            break;
+
+        discriptAddress += sizeof(IMAGE_IMPORT_DESCRIPTOR);
+
+
+    }
 
 
 
@@ -187,29 +216,17 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
 }
 
 
-int main() {
+static int mymain() {
 
     // DWORD processID = PrintProcessModules(L"sublime_text.exe"); // To get particular process
     //printf("process id found = %d\n", processID);
 
 
-    DetectSuspiciousThingsAboutProcess(L"suxt.exe");
 
-    //  Descriptor Address
-    DWORD descriptorAddress = importDirectory->VirtualAddress + exeBaseAddress;
-
-    IMAGE_IMPORT_DESCRIPTOR importDescriptor;
-
-    while (true) {
-        ReadProcessMemory(processHandle, (LPVOID)descriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL);
-        if (!importDescriptor.Name)
-            break;
-
-
-        descriptorAddress += sizeof(IMAGE_IMPORT_DESCRIPTOR);
-    }
-
-
-    getchar();
-    return 0;
+     getchar();
+     return 0;*/
 }
+
+
+
+
