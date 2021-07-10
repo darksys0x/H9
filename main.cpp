@@ -218,7 +218,8 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
     
     while (discriptAddress)
     {
-        // call readprocessmemory
+        ReadProcessMemory(oP, (PVOID)ntheader, &importDescriptor, sizeof(importDescriptor), NULL);
+
 
         if (!importDescriptor.Name)
             break;
@@ -239,7 +240,7 @@ static int mymain() {
     // DWORD processID = PrintProcessModules(L"sublime_text.exe"); // To get particular process
     //printf("process id found = %d\n", processID);
 
-
+   
 
      getchar();
      return 0;
