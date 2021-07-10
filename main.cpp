@@ -190,7 +190,9 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
     DWORD baseNTheader = beasAddressExe + dsheader.e_lfanew;
     IMAGE_NT_HEADERS ntheader;
     ReadProcessMemory(oP, (PVOID)baseNTheader, &ntheader, sizeof(ntheader), NULL);
-    //discriptor 
+    
+    //******************************************
+    //discriptor part
 
 
     DWORD discriptAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe;
@@ -216,19 +218,15 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
     IMAGE_IMPORT_DESCRIPTOR importDescriptor;
     
     
-    while (discriptAddress)
-    {
-        ReadProcessMemory(oP, (PVOID)ntheader, &importDescriptor, sizeof(importDescriptor), NULL);
+    while (discriptorAddress) {
+        ReadProcessMemory(oP, (PVOID)discriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL);
+        if (!importDescriptor.Name) {
+            printf("the imports name are done\n");
 
-
-        if (!importDescriptor.Name)
             break;
-
-        discriptAddress += sizeof(IMAGE_IMPORT_DESCRIPTOR);
-
+        }
 
     }
-
 
 
 
