@@ -1,3 +1,3 @@
 # H9
 
-Automatic dynamic malware memory detection
+Automatic dynamic malware detection
