@@ -138,8 +138,13 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
         printf("failed to get target process id\n");
         return;
     }
+    printf("TargetprocessId = %#.8x\n", processId);
     //Get the DOS & NT header of target process
     HANDLE oP = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId); //open process
+    if (oP == NULL) {
+        printf("no open process\n");
+        return;
+    }
 
     NtQueryInfoType NtQInfoFunction = (NtQueryInfoType)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "NtQueryInformationProcess");  //exported function from DLL
     if (!NtQInfoFunction) {
@@ -172,7 +177,13 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
         ULONG            ProcessInformationLength,
         PULONG           ReturnLength
     );*/
-    NtQInfoFunction(oP, ProcessBasicInformation, &processBasicInfo, sizeof(processBasicInfo), &ReturnLength);
+    NTSTATUS status = NtQInfoFunction(oP, ProcessBasicInformation, &processBasicInfo, sizeof(processBasicInfo), &ReturnLength);
+
+#define STATUS_SUCCESS  0x0
+    if (status != STATUS_SUCCESS) {
+        printf("NtQInfoFunction failed\n");
+    }
+
     //part of PEB 
     PEB peb;
     /*typedef struct _PROCESS_BASIC_INFORMATION {
@@ -182,66 +193,95 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
         ULONG_PTR UniqueProcessId;
         PVOID Reserved3;
     } PROCESS_BASIC_INFORMATION;*/
-    ReadProcessMemory(oP, (PVOID)processBasicInfo.PebBaseAddress, &peb, sizeof(peb), NULL);
+
+    printf("processBasicInfo.PebBaseAddress = %#.8x\n", processBasicInfo.PebBaseAddress);
+    if (!ReadProcessMemory(oP, (PVOID)processBasicInfo.PebBaseAddress, &peb, sizeof(peb), NULL)) {
+        printf("failed to get peb | error = %#.8x\n", GetLastError());
+
+        return;
+    }
     DWORD beasAddressExe = (DWORD)peb.Reserved3[1];
+
+    printf("beasAddressExe = %#.8x\n", beasAddressExe);
     // part of pe header NT & DOS 
     IMAGE_DOS_HEADER dsheader;
-    ReadProcessMemory(oP, (PVOID)beasAddressExe, &dsheader, sizeof(dsheader), NULL);
+
+    if (!ReadProcessMemory(oP, (PVOID)beasAddressExe, &dsheader, sizeof(dsheader), NULL)) {
+        printf("failed to get DOSheader\n");
+
+        return;
+    }
+
     DWORD baseNTheader = beasAddressExe + dsheader.e_lfanew;
     IMAGE_NT_HEADERS ntheader;
-    ReadProcessMemory(oP, (PVOID)baseNTheader, &ntheader, sizeof(ntheader), NULL);
-    
-    //******************************************
-    //discriptor part
+
+    if (!ReadProcessMemory(oP, (PVOID)baseNTheader, &ntheader, sizeof(ntheader), NULL)) {
+        printf("failed to get Ntheader\n");
+
+        return;
+    }
+
+    //Discriptor
 
 
-    DWORD discriptAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe;
-    
-
-
-    //typedef struct _IMAGE_IMPORT_DESCRIPTOR {
-    //    union {
-    //        DWORD   Characteristics;            // 0 for terminating null import descriptor
-    //        DWORD   OriginalFirstThunk;         // RVA to original unbound IAT (PIMAGE_THUNK_DATA)
-    //    } DUMMYUNIONNAME;
-    //    DWORD   TimeDateStamp;                  // 0 if not bound,
-    //                                            // -1 if bound, and real date\time stamp
-    //                                            //     in IMAGE_DIRECTORY_ENTRY_BOUND_IMPORT (new BIND)
-    //                                            // O.W. date/time stamp of DLL bound to (Old BIND)
-
-    //    DWORD   ForwarderChain;                 // -1 if no forwarders
-    //    DWORD   Name;
-    //    DWORD   FirstThunk;                     // RVA to IAT (if bound this IAT has actual addresses)
-    //} IMAGE_IMPORT_DESCRIPTOR;
-
-
+    DWORD discriptorAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe;
     IMAGE_IMPORT_DESCRIPTOR importDescriptor;
-    
-    
     while (discriptorAddress) {
-        ReadProcessMemory(oP, (PVOID)discriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL);
+        if (!ReadProcessMemory(oP, (PVOID)discriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL))
+        {
+            printf("Failed to get import descriptor\n");
+        }
         if (!importDescriptor.Name) {
             printf("the imports name are done\n");
 
             break;
         }
 
+        DWORD descriptorNameAddress = importDescriptor.Name + beasAddressExe; // nameOffset + baseAddress = nameAddress
+        printf("the address of import function = %#.8x\n", descriptorNameAddress);
+        char buffer[100];
+
+        if (!ReadProcessMemory(oP, (PVOID)descriptorNameAddress, &buffer, sizeof(buffer), NULL))
+        {
+            printf("Failed to get descriptor name\n");
+        }
+
+        printf("descriptor name = %s\n\n", buffer);
+
+        DWORD originalthunkAddress = importDescriptor.OriginalFirstThunk + beasAddressExe;
+        IMAGE_THUNK_DATA originalThunk;
+        while (originalthunkAddress) {
+
+            
+
+            if (!originalThunk.u1.Function)
+                break;
+
+            originalthunkAddress += ;
+        }
+
+        discriptorAddress += sizeof(importDescriptor);
+
+
     }
+
 
 
 
 }
 
 
-static int mymain() {
+int main() {
 
     // DWORD processID = PrintProcessModules(L"sublime_text.exe"); // To get particular process
     //printf("process id found = %d\n", processID);
 
+
+    DetectSuspiciousThingsAboutProcess(L"swapapp.exe");
    
 
-     getchar();
-     return 0;
+    getchar();
+    return 0;*/
 }
 
 
