@@ -49,7 +49,7 @@ typedef NTSTATUS(__stdcall* NtQueryInfoType)(
 static std::map<std::wstring, bool> modulePathsMap;
 DWORD counter = 0; // numbers of modules in the memory  
 
-//get all Modules in memory affiliated each process 
+//get all Modules in memory are affiliated each process 
 void printModules(DWORD th32ProcessID) {
     HANDLE moduleOfprocess = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, th32ProcessID);
     MODULEENTRY32 m;
@@ -221,51 +221,28 @@ void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
         return;
     }
 
-    //Discriptor
+    //Discriptor as like kernale32.dll
 
 
-    DWORD discriptorAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe;
-    IMAGE_IMPORT_DESCRIPTOR importDescriptor;
-    while (discriptorAddress) {
-        if (!ReadProcessMemory(oP, (PVOID)discriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL))
-        {
-            printf("Failed to get import descriptor\n");
+    DWORD discriptorAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe; // address of first descriptor in descriptor array
+    IMAGE_IMPORT_DESCRIPTOR importDescriptor; //object
+    for (; discriptorAddress; )
+    {
+        if (!ReadProcessMemory(oP, (PVOID)discriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL)) {
+            return;
+
         }
-        if (!importDescriptor.Name) {
-            printf("the imports name are done\n");
 
+        if (!importDescriptor.Name)
             break;
-        }
-
-        DWORD descriptorNameAddress = importDescriptor.Name + beasAddressExe; // nameOffset + baseAddress = nameAddress
-        printf("the address of import function = %#.8x\n", descriptorNameAddress);
-        char buffer[100];
-
-        if (!ReadProcessMemory(oP, (PVOID)descriptorNameAddress, &buffer, sizeof(buffer), NULL))
-        {
-            printf("Failed to get descriptor name\n");
-        }
-
-        printf("descriptor name = %s\n\n", buffer);
-
-        DWORD originalthunkAddress = importDescriptor.OriginalFirstThunk + beasAddressExe;
-        IMAGE_THUNK_DATA originalThunk;
-        while (originalthunkAddress) {
-
-            
-
-            if (!originalThunk.u1.Function)
-                break;
-
-            originalthunkAddress += ;
-        }
+        DWORD nameAddress = importDescriptor.Name + beasAddressExe;
+        char name[100];
+        ReadProcessMemory(oP, (PVOID)nameAddress, name, sizeof(name), NULL);
+        printf("***The name of discriptor = %s\n", name);
 
         discriptorAddress += sizeof(importDescriptor);
 
-
     }
-
-
 
 
 }
@@ -277,13 +254,9 @@ int main() {
     //printf("process id found = %d\n", processID);
 
 
-    DetectSuspiciousThingsAboutProcess(L"swapapp.exe");
-   
+    DetectSuspiciousThingsAboutProcess(L"xxx.exe");
+
 
     getchar();
     return 0;
 }
-
-
-
-
