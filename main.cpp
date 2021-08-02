@@ -18,8 +18,10 @@ typedef NTSTATUS(__stdcall* NtQueryInfoType)(
     ULONG            ProcessInformationLength,
     PULONG           ReturnLength
     );
-
-
+//gets the SessionId
+//     mov     eax,fs:[00000018]
+//     mov     eax,[eax+0x30]
+//     mov     eax,[eax+0x1d4]
 
 
 
