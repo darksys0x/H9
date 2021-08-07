@@ -1,27 +1,41 @@
-#include<stdio.h>
-#include<Windows.h>
-#include<tlhelp32.h>
-#include<shlwapi.h>
-#include<libloaderapi.h>
-#include<winternl.h>
+#include <stdio.h>
+#include <Windows.h>
+#include <tlhelp32.h>
+#include <shlwapi.h>
+#include <winternl.h>
+#include <dbghelp.h>
 #include <map>
 #include <string>
-#pragma comment(lib, "Shlwapi.lib")//pragma
+
 #pragma comment(lib, "Kernel32.lib")
+#pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "Ntdll.dll")
+#pragma comment(lib, "Dbghelp.dll")
 
 
 
-typedef NTSTATUS(__stdcall* NtQueryInfoType)(
-    HANDLE           ProcessHandle,
-    PROCESSINFOCLASS ProcessInformationClass,
-    PVOID            ProcessInformation,
-    ULONG            ProcessInformationLength,
-    PULONG           ReturnLength
-    );
-//gets the SessionId
-//     mov     eax,fs:[00000018]
-//     mov     eax,[eax+0x30]
-//     mov     eax,[eax+0x1d4]
+
+char blackFunction[][32] = {
+	"URLDownloadToFile", "SetWindowsHookExA", "CreateFIleA"
+	//we need use extnel 
+};
+
+
+typedef NTSTATUS(__stdcall* NtQueryInfoType)
+(
+	HANDLE           ProcessHandle,
+	PROCESSINFOCLASS ProcessInformationClass,
+	PVOID            ProcessInformation,
+	ULONG            ProcessInformationLength,
+	PULONG           ReturnLength
+	);
+typedef NTSTATUS(__stdcall* ImageDirectoryEntryToData)(
+	PVOID   Base,
+	BOOLEAN MappedAsImage,
+	USHORT  DirectoryEntry,
+	PULONG  Size
+	);
+
 
 
 
@@ -45,220 +59,184 @@ typedef NTSTATUS(__stdcall* NtQueryInfoType)(
 //#define TH32CS_INHERIT      0x80000000
 //
 
+
+//gets the SessionId
+//     mov     eax,fs:[00000018]
+//     mov     eax,[eax+0x30]
+//     mov     eax,[eax+0x1d4]
+
+
+
+
 // std::string = C++ ascii
 // std::wstring = C++ wide string (unicode)
 
 static std::map<std::wstring, bool> modulePathsMap;
-DWORD counter = 0; // numbers of modules in the memory  
 
-//get all Modules in memory are affiliated each process 
-void printModules(DWORD th32ProcessID) {
-    HANDLE moduleOfprocess = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, th32ProcessID);
-    MODULEENTRY32 m;
-    m.dwSize = sizeof(MODULEENTRY32);
-    BOOL n = Module32First(moduleOfprocess, &m);
-    while (n == TRUE) {
-        printf("module ID = %d | %ws\n", m.th32ModuleID, m.szExePath);
-
-        n = Module32Next(moduleOfprocess, &m);
-
-        std::wstring path(m.szExePath);
-        if (modulePathsMap.find(path) == modulePathsMap.end()) { // if not found
-            modulePathsMap[path] = true; // insert the path into map
-            counter++; // this counter is only incremented if path is not found already to avoid duplicates
-        }
-
-    }
+void readDLll(DWORD th32ProcessID) {
+	HANDLE DLL = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, th32ProcessID);
+	MODULEENTRY32 me;
+	me.dwSize = sizeof(MODULEENTRY32);
+	BOOL m = Module32First(DLL, &me);
+	DWORD numOfmodule = 0;
 
 
-    CloseHandle(moduleOfprocess);
-
-}
-
-//  get snap process is residing in the system
-DWORD PrintProcessModules(PCTSTR pName) {
-    HANDLE snapProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
-    if (snapProcess == INVALID_HANDLE_VALUE)
-    {
-        MessageBox(NULL, L"Error: unable to create toolhelp snapshot", L"Loader", NULL);
-        return FALSE;
-    }
-    PROCESSENTRY32 pe;
-    pe.dwSize = sizeof(PROCESSENTRY32);
-    BOOL i = Process32First(snapProcess, &pe);
-    DWORD processID = 0;
-    DWORD numberOfProcess = 0;
-
-    while (i == TRUE) {
-        printf("processNumber = %d process = %d | %ws\n", numberOfProcess, pe.th32ProcessID, pe.szExeFile);
-        if (StrStrIW(pe.szExeFile, pName)) {
-            processID = pe.th32ProcessID;
-            printf("found process id in loop\n");
-        }
-        printModules(pe.th32ProcessID);
-        i = Process32Next(snapProcess, &pe);
-        numberOfProcess++;
-
-    }
-    printf("the number of process is residing system = %d  | Total Modules = %d (without duplicates)\n\n\n", numberOfProcess, counter);
-    CloseHandle(snapProcess);
-}
+	while (m == TRUE)
+	{
+		numOfmodule++;
+		printf("Module: %d | Module Id = %d | %ws\n", numOfmodule, me.th32ModuleID, me.szExePath);
+		m = Module32Next(DLL, &me);
+		//std::wstring path(me.szExePath);
+		//if (modulePathsMap.find(path) == modulePathsMap.end()) { // if not found
+		//	modulePathsMap[path] = true; // insert the path into map
 
 
-DWORD GetTargetProcessId(PCTSTR pName)
-{
-    HANDLE snapProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
-    if (snapProcess == INVALID_HANDLE_VALUE)
-    {
-        MessageBox(NULL, L"Error: unable to create toolhelp snapshot", L"Loader", NULL);
-        return FALSE;
-    }
-    PROCESSENTRY32 pe;
-    pe.dwSize = sizeof(PROCESSENTRY32);
-    BOOL i = Process32First(snapProcess, &pe);
-    DWORD processID = 0;
-
-
-    while (i == TRUE) {
-        if (StrStrIW(pe.szExeFile, pName)) {
-            processID = pe.th32ProcessID;
-            break;
-        }
-        i = Process32Next(snapProcess, &pe);
-
-    }
-    CloseHandle(snapProcess);
-    return processID;
+	}
+	printf("there are %d modules of this process.\n", numOfmodule);
+	CloseHandle(readDLll);
 }
 
 
 
-void DetectSuspiciousThingsAboutProcess(PCTSTR pName)
-{
-    DWORD processId = GetTargetProcessId(pName);
-    if (!processId) {
-        printf("failed to get target process id\n");
-        return;
-    }
-    printf("TargetprocessId = %#.8x\n", processId);
-    //Get the DOS & NT header of target process
-    HANDLE oP = OpenProcess(PROCESS_ALL_ACCESS, FALSE, processId); //open process
-    if (oP == NULL) {
-        printf("no open process\n");
-        return;
-    }
-
-    NtQueryInfoType NtQInfoFunction = (NtQueryInfoType)GetProcAddress(GetModuleHandle(L"ntdll.dll"), "NtQueryInformationProcess");  //exported function from DLL
-    if (!NtQInfoFunction) {
-        printf("failed to get NtQueryInformationProcess address\n");
-        CloseHandle(oP);
-        return;
-    }
-
-    /*NTDLL.DLL              kernelbase.dll or kernel32.dll
-    ______________________________________________________________
-    NtWriteVirtualMemory    = WriteProcessMemory
-    NtReadVirtualMemory    = ReadProcessMemory
-    NtProtectVirtualMemory = VirtualProtect*/
-
-    /*  typedef struct _PROCESS_BASIC_INFORMATION {
-          PVOID Reserved1;
-          PPEB PebBaseAddress;
-          PVOID Reserved2[2];
-          ULONG_PTR UniqueProcessId;
-          PVOID Reserved3;
-      } PROCESS_BASIC_INFORMATION;*/
-
-    PROCESS_BASIC_INFORMATION processBasicInfo;
-    DWORD ReturnLength;
-
-    /*_kernel_entry NTSTATUS NtQueryInformationProcess(
-        HANDLE           ProcessHandle,
-        PROCESSINFOCLASS ProcessInformationClass,
-        PVOID            ProcessInformation,
-        ULONG            ProcessInformationLength,
-        PULONG           ReturnLength
-    );*/
-    NTSTATUS status = NtQInfoFunction(oP, ProcessBasicInformation, &processBasicInfo, sizeof(processBasicInfo), &ReturnLength);
-
-#define STATUS_SUCCESS  0x0
-    if (status != STATUS_SUCCESS) {
-        printf("NtQInfoFunction failed\n");
-    }
-
-    //part of PEB 
-    PEB peb;
-    /*typedef struct _PROCESS_BASIC_INFORMATION {
-        PVOID Reserved1;
-        PPEB PebBaseAddress;
-        PVOID Reserved2[2];
-        ULONG_PTR UniqueProcessId;
-        PVOID Reserved3;
-    } PROCESS_BASIC_INFORMATION;*/
-
-    printf("processBasicInfo.PebBaseAddress = %#.8x\n", processBasicInfo.PebBaseAddress);
-    if (!ReadProcessMemory(oP, (PVOID)processBasicInfo.PebBaseAddress, &peb, sizeof(peb), NULL)) {
-        printf("failed to get peb | error = %#.8x\n", GetLastError());
-
-        return;
-    }
-    DWORD beasAddressExe = (DWORD)peb.Reserved3[1];
-
-    printf("beasAddressExe = %#.8x\n", beasAddressExe);
-    // part of pe header NT & DOS 
-    IMAGE_DOS_HEADER dsheader;
-
-    if (!ReadProcessMemory(oP, (PVOID)beasAddressExe, &dsheader, sizeof(dsheader), NULL)) {
-        printf("failed to get DOSheader\n");
-
-        return;
-    }
-
-    DWORD baseNTheader = beasAddressExe + dsheader.e_lfanew;
-    IMAGE_NT_HEADERS ntheader;
-
-    if (!ReadProcessMemory(oP, (PVOID)baseNTheader, &ntheader, sizeof(ntheader), NULL)) {
-        printf("failed to get Ntheader\n");
-
-        return;
-    }
-
-    //Discriptor as like kernale32.dll
 
 
-    DWORD discriptorAddress = ntheader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + beasAddressExe; // address of first descriptor in descriptor array
-    IMAGE_IMPORT_DESCRIPTOR importDescriptor; //object
-    for (; discriptorAddress; )
-    {
-        if (!ReadProcessMemory(oP, (PVOID)discriptorAddress, &importDescriptor, sizeof(importDescriptor), NULL)) {
-            return;
+DWORD getProcessIDByName(PCTSTR Pname) {
+	HANDLE readProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+	PROCESSENTRY32 pe;
+	pe.dwSize = sizeof(PROCESSENTRY32);
+	BOOL p = Process32First(readProcess, &pe);
+	DWORD proceeID;
+	while (p == TRUE) // when can i used the == true or not and why>
 
-        }
+	{
+		if (StrStrIW(pe.szExeFile, Pname)) {
+			printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
+			proceeID = pe.th32ProcessID;
+			readDLll(pe.th32ProcessID);
+			break;
+		}
+		//printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
 
-        if (!importDescriptor.Name)
-            break;
-        DWORD nameAddress = importDescriptor.Name + beasAddressExe;
-        char name[100];
-        ReadProcessMemory(oP, (PVOID)nameAddress, name, sizeof(name), NULL);
-        printf("***The name of discriptor = %s\n", name);
+		p = Process32Next(readProcess, &pe);
 
-        discriptorAddress += sizeof(importDescriptor);
+	}
+	return proceeID;
+}
 
-    }
+DWORD GetBaseAddress(PCTSTR Pname, HANDLE* handleProcess) {
+	DWORD spesificProcess = getProcessIDByName(Pname);
+	HANDLE oP = OpenProcess(PROCESS_ALL_ACCESS, FALSE, spesificProcess);
+	*handleProcess = oP;
+	HMODULE ntDllBaseAddress = GetModuleHandle(L"ntdll.dll");//?hmodule
+	NtQueryInfoType GetFunctionAddressOfInsideNtlls = (NtQueryInfoType)GetProcAddress(ntDllBaseAddress, "NtQueryInformationProcess");
+
+	PROCESS_BASIC_INFORMATION processBasicInfo;
+
+	/*NTDLL.DLL              kernelbase.dll or kernel32.dll
+	______________________________________________________________
+	NtWriteVirtualMemory    = WriteProcessMemory
+	NtReadVirtualMemory    = ReadProcessMemory
+	NtProtectVirtualMemory = VirtualProtect*/
+
+
+	/*typedef struct _PROCESS_BASIC_INFORMATION {
+		PVOID Reserved1;
+		PPEB PebBaseAddress;
+		PVOID Reserved2[2];
+		ULONG_PTR UniqueProcessId;
+		PVOID Reserved3;
+	} PROCESS_BASIC_INFORMATION*/
+	DWORD returnValue;
+	NTSTATUS status = GetFunctionAddressOfInsideNtlls(oP, ProcessBasicInformation, &processBasicInfo, sizeof(processBasicInfo), &returnValue);//?nts
+
+#define	STATUS_SUCCESS 0x0
+	if (status != STATUS_SUCCESS) {
+		printf("GetFunctionAddressOfInsideNtlls is failed\n");
+
+	}
+
+	PEB peb;
+	if (!ReadProcessMemory(oP, (PVOID)processBasicInfo.PebBaseAddress, &peb, sizeof(peb), NULL)) {
+		printf("processBasicInfo.PebBaseAddress is failed\n");
+		return 0;
+	}
+	DWORD baseAddessOfExe = (DWORD)peb.Reserved3[1];
+
+	return baseAddessOfExe;
+
 
 
 }
+//why don't use here a "&"  withe hamdleprocess?
+void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProcess) {
+	//IMAGE_Dos
+	IMAGE_DOS_HEADER DosHeader;
+	if (!ReadProcessMemory(handleProcess, (PVOID)baseAddessOfExe, &DosHeader, sizeof(DosHeader), NULL)) {
+		printf("the dosheader failed\n");
+		return;
+	}
+	//ntHeader
+	DWORD NTbaseAddress = baseAddessOfExe + DosHeader.e_lfanew;
+	IMAGE_NT_HEADERS ntHeader;
+	if (!ReadProcessMemory(handleProcess, (PVOID)NTbaseAddress, &ntHeader, sizeof(ntHeader), NULL)) {
+		printf("the ntHeader failed \n");
+		return;
 
+	}
+
+	//discriptor 
+
+	DWORD discriptorAddress = ntHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + baseAddessOfExe;
+	IMAGE_IMPORT_DESCRIPTOR imageDewscriptor;
+	for (; discriptorAddress;) {
+		if (!ReadProcessMemory(handleProcess, (PVOID)discriptorAddress, &imageDewscriptor, sizeof(imageDewscriptor), NULL)) {
+			printf("discriptorAddress falied\n");
+			return;
+
+			if (!imageDewscriptor.Name) {
+				printf("the discriptor is done\n");
+				break;
+			}
+			DWORD originalThunkAddress = baseAddessOfExe + imageDewscriptor.OriginalFirstThunk;
+			IMAGE_THUNK_DATA originalThunk;
+			char nameOfFunction[250];
+			while (originalThunkAddress) {
+				if (!ReadProcessMemory(handleProcess, (PVOID)originalThunkAddress, &originalThunk, sizeof(originalThunk), NULL)) {
+					printf("originalThunkAddress failed\n");
+
+					return;
+				}
+				if (!originalThunk.u1.Function) {
+					break;//done
+				}
+
+				IMAGE_IMPORT_BY_NAME;
+
+				DWORD importByNameAddress = baseAddessOfExe + originalThunk.u1.Function; // IMAGE_IMPORT_BY_NAME object address
+				DWORD nameAddress = importByNameAddress + 2;//must use base address to get name of function 
+
+				ReadProcessMemory(handleProcess, (PVOID)nameAddress, &nameOfFunction, sizeof(nameOfFunction), NULL);
+
+
+
+				originalThunkAddress += sizeof(originalThunk);
+
+				printf("the name of function = %s", nameOfFunction);
+
+			}
+
+		}
+		discriptorAddress += sizeof(imageDewscriptor);
+	}
+
+}
 
 int main() {
-
-    // DWORD processID = PrintProcessModules(L"sublime_text.exe"); // To get particular process
-    //printf("process id found = %d\n", processID);
-
-
-    DetectSuspiciousThingsAboutProcess(L"xxx.exe");
+	HANDLE handleProcess = NULL;
+	DWORD baseAddressofTaregetProcess = GetBaseAddress(L"Zoom.exe", &handleProcess);
+	printf("the process ID has selected = %d", baseAddressofTaregetProcess);
 
 
-    getchar();
-    return 0;
+	getchar();
+	return 0;
 }
