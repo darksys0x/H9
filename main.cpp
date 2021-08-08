@@ -16,8 +16,7 @@
 
 
 char blackFunction[][32] = {
-	"URLDownloadToFile", "SetWindowsHookExA", "CreateFIleA"
-	//we need use extnel 
+	"URLDownloadToFile", "SetWindowsHookExA", "CreateFIleA","VirtualProtect "
 };
 
 
@@ -58,12 +57,6 @@ typedef NTSTATUS(__stdcall* ImageDirectoryEntryToData)(
 //#define TH32CS_SNAPALL      (TH32CS_SNAPHEAPLIST | TH32CS_SNAPPROCESS | TH32CS_SNAPTHREAD | TH32CS_SNAPMODULE)
 //#define TH32CS_INHERIT      0x80000000
 //
-
-
-//gets the SessionId
-//     mov     eax,fs:[00000018]
-//     mov     eax,[eax+0x30]
-//     mov     eax,[eax+0x1d4]
 
 
 
