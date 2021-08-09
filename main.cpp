@@ -15,10 +15,11 @@
 
 
 
-char blackFunction[][32] = {
-	"URLDownloadToFile", "SetWindowsHookExA", "CreateFIleA","VirtualProtect "
-};
+#define MAX_FUNC_NAME_SIZE 100
+#define MAX_BLACKLISTED_FUNCS 25
 
+int totalBlackListedFunctions = 0;
+char* blackListedFunctionNames = NULL; // string array
 
 typedef NTSTATUS(__stdcall* NtQueryInfoType)
 (
@@ -28,12 +29,12 @@ typedef NTSTATUS(__stdcall* NtQueryInfoType)
 	ULONG            ProcessInformationLength,
 	PULONG           ReturnLength
 	);
-typedef NTSTATUS(__stdcall* ImageDirectoryEntryToData)(
-	PVOID   Base,
-	BOOLEAN MappedAsImage,
-	USHORT  DirectoryEntry,
-	PULONG  Size
-	);
+//typedef NTSTATUS(__stdcall* ImageDirectoryEntryToData)(
+//	PVOID   Base,
+//	BOOLEAN MappedAsImage,
+//	USHORT  DirectoryEntry,
+//	PULONG  Size
+//);
 
 
 
@@ -77,7 +78,7 @@ void readDLll(DWORD th32ProcessID) {
 	while (m == TRUE)
 	{
 		numOfmodule++;
-		printf("Module: %d | Module Id = %d | %ws\n", numOfmodule, me.th32ModuleID, me.szExePath);
+		//printf("Module: %d | Module Id = %d | %ws\n", numOfmodule, me.th32ModuleID, me.szExePath);
 		m = Module32Next(DLL, &me);
 		//std::wstring path(me.szExePath);
 		//if (modulePathsMap.find(path) == modulePathsMap.end()) { // if not found
@@ -86,7 +87,7 @@ void readDLll(DWORD th32ProcessID) {
 
 	}
 	printf("there are %d modules of this process.\n", numOfmodule);
-	CloseHandle(readDLll);
+	CloseHandle(DLL);
 }
 
 
@@ -105,7 +106,7 @@ DWORD getProcessIDByName(PCTSTR Pname) {
 		if (StrStrIW(pe.szExeFile, Pname)) {
 			printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
 			proceeID = pe.th32ProcessID;
-			readDLll(pe.th32ProcessID);
+			//readDLll(pe.th32ProcessID);
 			break;
 		}
 		//printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
@@ -185,49 +186,98 @@ void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProces
 		if (!ReadProcessMemory(handleProcess, (PVOID)discriptorAddress, &imageDewscriptor, sizeof(imageDewscriptor), NULL)) {
 			printf("discriptorAddress falied\n");
 			return;
+		}
 
-			if (!imageDewscriptor.Name) {
-				printf("the discriptor is done\n");
-				break;
+		if (!imageDewscriptor.Name) {
+			printf("the discriptor is done\n");
+			break;
+		}
+		DWORD originalThunkAddress = baseAddessOfExe + imageDewscriptor.OriginalFirstThunk;
+		IMAGE_THUNK_DATA originalThunk;
+		char nameOfFunction[250];
+		while (originalThunkAddress) {
+			if (!ReadProcessMemory(handleProcess, (PVOID)originalThunkAddress, &originalThunk, sizeof(originalThunk), NULL)) {
+				printf("originalThunkAddress failed\n");
+
+				return;
 			}
-			DWORD originalThunkAddress = baseAddessOfExe + imageDewscriptor.OriginalFirstThunk;
-			IMAGE_THUNK_DATA originalThunk;
-			char nameOfFunction[250];
-			while (originalThunkAddress) {
-				if (!ReadProcessMemory(handleProcess, (PVOID)originalThunkAddress, &originalThunk, sizeof(originalThunk), NULL)) {
-					printf("originalThunkAddress failed\n");
-
-					return;
-				}
-				if (!originalThunk.u1.Function) {
-					break;//done
-				}
-
-				IMAGE_IMPORT_BY_NAME;
-
-				DWORD importByNameAddress = baseAddessOfExe + originalThunk.u1.Function; // IMAGE_IMPORT_BY_NAME object address
-				DWORD nameAddress = importByNameAddress + 2;//must use base address to get name of function 
-
-				ReadProcessMemory(handleProcess, (PVOID)nameAddress, &nameOfFunction, sizeof(nameOfFunction), NULL);
-
-
-
-				originalThunkAddress += sizeof(originalThunk);
-
-				printf("the name of function = %s", nameOfFunction);
-
+			if (!originalThunk.u1.Function) {
+				break;//done
 			}
+
+			IMAGE_IMPORT_BY_NAME;
+
+			DWORD importByNameAddress = baseAddessOfExe + originalThunk.u1.Function; // IMAGE_IMPORT_BY_NAME object address
+			DWORD nameAddress = importByNameAddress + 2;//must use base address to get name of function 
+
+			ReadProcessMemory(handleProcess, (PVOID)nameAddress, &nameOfFunction, sizeof(nameOfFunction), NULL);
+
+			//printf("the name of function = %s\n", nameOfFunction);
+
+
+			for (int i = 0; i < MAX_BLACKLISTED_FUNCS; i++)
+			{
+				char* blacklistedFunctionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
+				if (strcmp(nameOfFunction, blacklistedFunctionName) == 0) {
+					printf("! %s is blacklisted\n", nameOfFunction);
+				}
+			}
+
+
+			originalThunkAddress += sizeof(originalThunk);
+
 
 		}
+
 		discriptorAddress += sizeof(imageDewscriptor);
 	}
+
+
+}
+
+
+
+
+
+void ReadFromFile() {
+
+	FILE* fileRead;
+	fileRead = fopen("C:\\Users\\H\\Desktop\\ME\\BadFuncions.txt", "r");
+
+	for (int i = 0; !feof(fileRead); i++)
+	{
+		char* functionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
+		fgets(functionName, 250, fileRead);
+		char* p = functionName;
+		while (*p != '\0') {
+			if (*p == '\n')
+				*p = '\0';
+			p++;
+		}
+		printf("%s\n", functionName);
+	}
+
+	fclose(fileRead);
 
 }
 
 int main() {
+
+	blackListedFunctionNames = (char*)malloc(MAX_FUNC_NAME_SIZE * MAX_BLACKLISTED_FUNCS); // char blackListedFunctionNames[MAX_FUNC_NAME_SIZE][MAX_BLACKLISTED_FUNCS];
+	for (int i = 0; i < MAX_BLACKLISTED_FUNCS; i++)
+	{
+		char* functionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
+		*functionName = '\0';
+		printf("%s\n", functionName);
+	}
+
+	ReadFromFile();
+
 	HANDLE handleProcess = NULL;
 	DWORD baseAddressofTaregetProcess = GetBaseAddress(L"Zoom.exe", &handleProcess);
-	printf("the process ID has selected = %d", baseAddressofTaregetProcess);
+	printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
+
+	DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);
 
 
 	getchar();
