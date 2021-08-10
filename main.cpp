@@ -17,9 +17,11 @@
 
 #define MAX_FUNC_NAME_SIZE 100
 #define MAX_BLACKLISTED_FUNCS 25
-
-int totalBlackListedFunctions = 0;
 char* blackListedFunctionNames = NULL; // string array
+
+
+
+
 
 typedef NTSTATUS(__stdcall* NtQueryInfoType)
 (
@@ -262,6 +264,10 @@ void ReadFromFile() {
 }
 
 int main() {
+	// 0x968745 + 0                = 1st element 
+	// 0x968745 + 0x64  = 0x9687A9 = 2nd element
+	// 0x968745 + 0xC8  = 0x96880D = 3rd element
+	// 0x968745 + 0x12C = 0x968871 = 4th element
 
 	blackListedFunctionNames = (char*)malloc(MAX_FUNC_NAME_SIZE * MAX_BLACKLISTED_FUNCS); // char blackListedFunctionNames[MAX_FUNC_NAME_SIZE][MAX_BLACKLISTED_FUNCS];
 	for (int i = 0; i < MAX_BLACKLISTED_FUNCS; i++)
