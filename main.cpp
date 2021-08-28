@@ -7,21 +7,17 @@
 #include <map>
 #include <string>
 
-#pragma comment(lib, "Kernel32.lib")
+//#pragma comment(lib, "Kernel32.lib")
 #pragma comment(lib, "Shlwapi.lib")
-#pragma comment(lib, "Ntdll.dll")
-#pragma comment(lib, "Dbghelp.dll")
+//#pragma comment(lib, "Ntdll.dll")
+//#pragma comment(lib, "Dbghelp.dll")
 
 
+#define MAX_FUNC_NAME_SIZE 100 // maximum size of the each element/string in the array
+#define MAX_BLACKLISTED_FUNCS 25 // maximum number of elements/strings in the array
 
 
-#define MAX_FUNC_NAME_SIZE 100
-#define MAX_BLACKLISTED_FUNCS 25
 char* blackListedFunctionNames = NULL; // string array
-
-
-
-
 
 typedef NTSTATUS(__stdcall* NtQueryInfoType)
 (
@@ -101,7 +97,7 @@ DWORD getProcessIDByName(PCTSTR Pname) {
 	PROCESSENTRY32 pe;
 	pe.dwSize = sizeof(PROCESSENTRY32);
 	BOOL p = Process32First(readProcess, &pe);
-	DWORD proceeID;
+	DWORD proceeID = 0;
 	while (p == TRUE) // when can i used the == true or not and why>
 
 	{
@@ -119,10 +115,11 @@ DWORD getProcessIDByName(PCTSTR Pname) {
 	return proceeID;
 }
 
-DWORD GetBaseAddress(PCTSTR Pname, HANDLE* handleProcess) {
-	DWORD spesificProcess = getProcessIDByName(Pname);
+DWORD GetBaseAddress(DWORD spesificProcess, HANDLE* handleProcess) {
 	HANDLE oP = OpenProcess(PROCESS_ALL_ACCESS, FALSE, spesificProcess);
 	*handleProcess = oP;
+	if (!oP)
+		return NULL;
 	HMODULE ntDllBaseAddress = GetModuleHandle(L"ntdll.dll");//?hmodule
 	NtQueryInfoType GetFunctionAddressOfInsideNtlls = (NtQueryInfoType)GetProcAddress(ntDllBaseAddress, "NtQueryInformationProcess");
 
@@ -205,11 +202,13 @@ void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProces
 			}
 			if (!originalThunk.u1.Function) {
 				break;//done
+
 			}
 
 			IMAGE_IMPORT_BY_NAME;
 
 			DWORD importByNameAddress = baseAddessOfExe + originalThunk.u1.Function; // IMAGE_IMPORT_BY_NAME object address
+
 			DWORD nameAddress = importByNameAddress + 2;//must use base address to get name of function 
 
 			ReadProcessMemory(handleProcess, (PVOID)nameAddress, &nameOfFunction, sizeof(nameOfFunction), NULL);
@@ -220,40 +219,46 @@ void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProces
 			for (int i = 0; i < MAX_BLACKLISTED_FUNCS; i++)
 			{
 				char* blacklistedFunctionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
-				if (strcmp(nameOfFunction, blacklistedFunctionName) == 0) {
-					printf("! %s is blacklisted\n", nameOfFunction);
+				if (*blacklistedFunctionName != '\0') {
+					if (strcmp(nameOfFunction, blacklistedFunctionName) == 0) {
+						printf("\n! %s is blacklisted\n\n", nameOfFunction);
+
+					}
 				}
 			}
 
 
 			originalThunkAddress += sizeof(originalThunk);
 
+			discriptorAddress += sizeof(imageDewscriptor);
+
+
+
+
 
 		}
 
-		discriptorAddress += sizeof(imageDewscriptor);
+
 	}
 
 
+
 }
-
-
-
-
-
 void ReadFromFile() {
 
 	FILE* fileRead;
-	fileRead = fopen("C:\\Users\\H\\Desktop\\ME\\BadFuncions.txt", "r");
+	fileRead = fopen("C:\\Users\\DFIR\\Desktop\\ME\\BadFuncions.txt", "r");
 
 	for (int i = 0; !feof(fileRead); i++)
 	{
 		char* functionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
-		fgets(functionName, 250, fileRead);
+		fgets(functionName, MAX_FUNC_NAME_SIZE, fileRead);// read one line
 		char* p = functionName;
 		while (*p != '\0') {
-			if (*p == '\n')
+			if (*p == '\n') {
 				*p = '\0';
+				break;
+			}
 			p++;
 		}
 		printf("%s\n", functionName);
@@ -263,27 +268,55 @@ void ReadFromFile() {
 
 }
 
+
+
 int main() {
+
 	// 0x968745 + 0                = 1st element 
 	// 0x968745 + 0x64  = 0x9687A9 = 2nd element
 	// 0x968745 + 0xC8  = 0x96880D = 3rd element
 	// 0x968745 + 0x12C = 0x968871 = 4th element
-
-	blackListedFunctionNames = (char*)malloc(MAX_FUNC_NAME_SIZE * MAX_BLACKLISTED_FUNCS); // char blackListedFunctionNames[MAX_FUNC_NAME_SIZE][MAX_BLACKLISTED_FUNCS];
+	blackListedFunctionNames = (char*)malloc(MAX_FUNC_NAME_SIZE * MAX_BLACKLISTED_FUNCS); // char blackListedFunctionNames[MAX_BLACKLISTED_FUNCS][MAX_FUNC_NAME_SIZE];
 	for (int i = 0; i < MAX_BLACKLISTED_FUNCS; i++)
 	{
-		char* functionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
-		*functionName = '\0';
-		printf("%s\n", functionName);
+		//                       0x968745  + 100
+		char* p = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE; // gets address of the first byte of the element
+		*p = '\0';
 	}
 
 	ReadFromFile();
 
 	HANDLE handleProcess = NULL;
-	DWORD baseAddressofTaregetProcess = GetBaseAddress(L"Zoom.exe", &handleProcess);
-	printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
 
-	DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);
+	/*DWORD processId = getProcessIDByName(L"vcpkgsrv.exe");
+	DWORD baseAddressofTaregetProcess = GetBaseAddress(processId, &handleProcess);
+	printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
+	if (handleProcess && baseAddressofTaregetProcess)
+		DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);*/
+
+	HANDLE readProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+	PROCESSENTRY32 pe;
+	pe.dwSize = sizeof(PROCESSENTRY32);
+	BOOL p = Process32First(readProcess, &pe);
+	DWORD proceeID;
+	while (p == TRUE) // when can i used the == true or not and why>
+
+	{
+		printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
+		DWORD baseAddressofTaregetProcess = GetBaseAddress(pe.th32ProcessID, &handleProcess);
+		printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
+		if (handleProcess && baseAddressofTaregetProcess)
+			DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);
+
+
+		p = Process32Next(readProcess, &pe);
+
+	}
+
+
+
+
+
 
 
 	getchar();
