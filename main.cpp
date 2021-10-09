@@ -6,12 +6,16 @@
 #include <dbghelp.h>
 #include <map>
 #include <string>
+#include "x64Structs.h"
 
 //#pragma comment(lib, "Kernel32.lib")
 #pragma comment(lib, "Shlwapi.lib")
 //#pragma comment(lib, "Ntdll.dll")
 //#pragma comment(lib, "Dbghelp.dll")
 
+void Initialisex64Functions();
+uint64_t GetBaseAddressx64(HANDLE oP);
+void DetectSuspiciousFunctionAProcessx64(uint64_t baseAddessOfExe, HANDLE handleProcess);
 
 #define MAX_FUNC_NAME_SIZE 100 // maximum size of the each element/string in the array
 #define MAX_BLACKLISTED_FUNCS 25 // maximum number of elements/strings in the array
@@ -20,13 +24,15 @@
 char* blackListedFunctionNames = NULL; // string array
 
 typedef NTSTATUS(__stdcall* NtQueryInfoType)
-(
+	(
 	HANDLE           ProcessHandle,
 	PROCESSINFOCLASS ProcessInformationClass,
 	PVOID            ProcessInformation,
 	ULONG            ProcessInformationLength,
 	PULONG           ReturnLength
-	);
+    );
+
+
 //typedef NTSTATUS(__stdcall* ImageDirectoryEntryToData)(
 //	PVOID   Base,
 //	BOOLEAN MappedAsImage,
@@ -81,8 +87,8 @@ void readDLll(DWORD th32ProcessID) {
 		//std::wstring path(me.szExePath);
 		//if (modulePathsMap.find(path) == modulePathsMap.end()) { // if not found
 		//	modulePathsMap[path] = true; // insert the path into map
-
-
+		
+		
 	}
 	printf("there are %d modules of this process.\n", numOfmodule);
 	CloseHandle(DLL);
@@ -90,7 +96,37 @@ void readDLll(DWORD th32ProcessID) {
 
 
 
+BOOL IsWow64(HANDLE process)
+{
+	BOOL bIsWow64 = FALSE;
 
+	typedef BOOL(WINAPI* LPFN_ISWOW64PROCESS) (HANDLE, PBOOL);
+	LPFN_ISWOW64PROCESS fnIsWow64Process;
+	fnIsWow64Process = (LPFN_ISWOW64PROCESS)GetProcAddress(GetModuleHandle(TEXT("kernel32")), "IsWow64Process");
+
+	if (NULL != fnIsWow64Process)
+	{
+		if (!fnIsWow64Process(process, &bIsWow64))
+		{
+			//handle error
+		}
+	}
+	return bIsWow64;
+}
+
+bool IsX86Process(HANDLE process)
+{
+	SYSTEM_INFO systemInfo = { 0 };
+	GetNativeSystemInfo(&systemInfo);
+
+	// x86 environment
+	if (systemInfo.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_INTEL)
+		return true;
+
+	// Check if the process is an x86 process that is running on x64 environment.
+	// IsWow64 returns true if the process is an x86 process
+	return IsWow64(process);
+}
 
 DWORD getProcessIDByName(PCTSTR Pname) {
 	HANDLE readProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
@@ -108,18 +144,15 @@ DWORD getProcessIDByName(PCTSTR Pname) {
 			break;
 		}
 		//printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
-
+		
 		p = Process32Next(readProcess, &pe);
-
+		
 	}
 	return proceeID;
 }
 
-DWORD GetBaseAddress(DWORD spesificProcess, HANDLE* handleProcess) {
-	HANDLE oP = OpenProcess(PROCESS_ALL_ACCESS, FALSE, spesificProcess);
-	*handleProcess = oP;
-	if (!oP)
-		return NULL;
+
+DWORD GetBaseAddress(HANDLE oP) {
 	HMODULE ntDllBaseAddress = GetModuleHandle(L"ntdll.dll");//?hmodule
 	NtQueryInfoType GetFunctionAddressOfInsideNtlls = (NtQueryInfoType)GetProcAddress(ntDllBaseAddress, "NtQueryInformationProcess");
 
@@ -145,7 +178,7 @@ DWORD GetBaseAddress(DWORD spesificProcess, HANDLE* handleProcess) {
 #define	STATUS_SUCCESS 0x0
 	if (status != STATUS_SUCCESS) {
 		printf("GetFunctionAddressOfInsideNtlls is failed\n");
-
+		
 	}
 
 	PEB peb;
@@ -154,7 +187,7 @@ DWORD GetBaseAddress(DWORD spesificProcess, HANDLE* handleProcess) {
 		return 0;
 	}
 	DWORD baseAddessOfExe = (DWORD)peb.Reserved3[1];
-
+	
 	return baseAddessOfExe;
 
 
@@ -171,14 +204,14 @@ void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProces
 	//ntHeader
 	DWORD NTbaseAddress = baseAddessOfExe + DosHeader.e_lfanew;
 	IMAGE_NT_HEADERS ntHeader;
-	if (!ReadProcessMemory(handleProcess, (PVOID)NTbaseAddress, &ntHeader, sizeof(ntHeader), NULL)) {
+	if(!ReadProcessMemory(handleProcess, (PVOID)NTbaseAddress, &ntHeader, sizeof(ntHeader), NULL)) {
 		printf("the ntHeader failed \n");
 		return;
 
 	}
 
 	//discriptor 
-
+	
 	DWORD discriptorAddress = ntHeader.OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress + baseAddessOfExe;
 	IMAGE_IMPORT_DESCRIPTOR imageDewscriptor;
 	for (; discriptorAddress;) {
@@ -230,34 +263,34 @@ void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProces
 
 			originalThunkAddress += sizeof(originalThunk);
 
-			discriptorAddress += sizeof(imageDewscriptor);
+		discriptorAddress += sizeof(imageDewscriptor);
 
 
 
-
-
-		}
 
 
 	}
 
 
-
 }
-void ReadFromFile() {
 
+
+
+		}
+void ReadFromFile() {
+	 
 	FILE* fileRead;
 	fileRead = fopen("C:\\Users\\DFIR\\Desktop\\ME\\BadFuncions.txt", "r");
 
 	for (int i = 0; !feof(fileRead); i++)
 	{
-		char* functionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE;
+		char* functionName = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE; 
 		fgets(functionName, MAX_FUNC_NAME_SIZE, fileRead);// read one line
 		char* p = functionName;
 		while (*p != '\0') {
 			if (*p == '\n') {
-				*p = '\0';
-				break;
+				*p ='\0';
+				break; 
 			}
 			p++;
 		}
@@ -267,6 +300,14 @@ void ReadFromFile() {
 	fclose(fileRead);
 
 }
+
+//DWORD get0x64Process() {
+//
+//}
+//
+//
+
+
 
 
 
@@ -280,45 +321,53 @@ int main() {
 	for (int i = 0; i < MAX_BLACKLISTED_FUNCS; i++)
 	{
 		//                       0x968745  + 100
+
 		char* p = blackListedFunctionNames + i * MAX_FUNC_NAME_SIZE; // gets address of the first byte of the element
 		*p = '\0';
 	}
 
 	ReadFromFile();
+	
+	Initialisex64Functions();
 
-	HANDLE handleProcess = NULL;
-
-	/*DWORD processId = getProcessIDByName(L"vcpkgsrv.exe");
-	DWORD baseAddressofTaregetProcess = GetBaseAddress(processId, &handleProcess);
-	printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
-	if (handleProcess && baseAddressofTaregetProcess)
-		DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);*/
 
 	HANDLE readProcess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
 	PROCESSENTRY32 pe;
 	pe.dwSize = sizeof(PROCESSENTRY32);
 	BOOL p = Process32First(readProcess, &pe);
-	DWORD proceeID;
-	while (p == TRUE) // when can i used the == true or not and why>
 
+
+	while (p == TRUE)
 	{
+
 		printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
-		DWORD baseAddressofTaregetProcess = GetBaseAddress(pe.th32ProcessID, &handleProcess);
-		printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
-		if (handleProcess && baseAddressofTaregetProcess)
-			DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);
+		HANDLE handleProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe.th32ProcessID);
+		if (handleProcess) {
+			if (IsX86Process(handleProcess)) {
+				DWORD baseAddressofTaregetProcess = GetBaseAddress(handleProcess);
+				printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
+				printf("base address of process EXE = %#.8x\n", baseAddressofTaregetProcess);
+				if (handleProcess && baseAddressofTaregetProcess)
+					DetectSuspiciousFunctionAProcess(baseAddressofTaregetProcess, handleProcess);
+			}
+			else {
+				uint64_t baseAddressofTaregetProcess = GetBaseAddressx64(handleProcess);
 
-
+				printf("the process ID = %d | %ws\n", pe.th32ProcessID, pe.szExeFile);
+				printf("base address of process EXE64 = %I64x\n", baseAddressofTaregetProcess);
+				if (handleProcess && baseAddressofTaregetProcess)
+					DetectSuspiciousFunctionAProcessx64(baseAddressofTaregetProcess, handleProcess);
+			}
+			CloseHandle(handleProcess);
+		}
 		p = Process32Next(readProcess, &pe);
-
 	}
-
-
+	
 
 
 
 
 
 	getchar();
-	return 0;
+	return 0; 
 }
