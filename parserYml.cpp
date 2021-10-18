@@ -17,7 +17,7 @@ int main() {
 		printf(" the success to read the file \n");
 	}
 	else {
-		printf("the error to get file\n");
+		printf("failed to open file\n");
 	}
 	
 	getchar();
