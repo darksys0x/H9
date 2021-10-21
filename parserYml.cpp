@@ -21,7 +21,7 @@ void printLineByLineFromHeapMemory( ) {
 		line[currentIndex] = p[i];
 		if(p[i] == '\n'){
 
-			// we have a complete line now
+			
 			
 			line[currentIndex] = '\0';
 			currentIndex = 0;
