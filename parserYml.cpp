@@ -7,7 +7,8 @@ long fileSize = 0;
 long currentOffset = 0;
 void* heapFileDate = NULL;
 
-
+char fileLines[50][200];
+int totalLines = 0;
 
 void printLineByLineFromHeapMemory( ) {
 	char* p = (char*)heapFileDate;
@@ -23,11 +24,12 @@ void printLineByLineFromHeapMemory( ) {
 			// we have a complete line now
 			
 			line[currentIndex] = '\0';
-			
-			printf("%s\n", line);
-
 			currentIndex = 0;
-			
+
+			printf("%s\n", line);
+			strncpy(fileLines[totalLines], line, strlen(line)+1);//strlen(line)+1 = that's mean hamad+nullTremantel
+			//sprintf(fileLines[totalLines], "%s", line);
+			totalLines++;
 			
 		}
 
@@ -35,8 +37,7 @@ void printLineByLineFromHeapMemory( ) {
 		{
 			currentIndex++;
 
-		} 
-		
+		} 	
 
 	}
 
@@ -52,31 +53,8 @@ void printLineByLineFromHeapMemory( ) {
 
 
 
-
-
-
-//
-//void printLineByLineFromHeapMemory() {
-//	char* p = (char*)heapFileDate;
-//	char line[200];
-//
-//	int lineIndex = 0;
-//	for (int i = 0; i < fileSize; i++) {
-//		//printf("%c", p[i]);
-//		if (p[i] == '\n') {
-//
-//			line[lineIndex] = '\0';
-//			printf("%s\n", line);
-//			lineIndex = 0;
-//		}
-//		else {
-//			line[lineIndex] = p[i]; // copy from file in heap to line
-//			lineIndex++;
-//		}
-//
-//	}
-//}
-
+void parseYamlFileLines() {
+}
 
 int main() {
 	FILE* hamadFile = fopen("C:\\Users\\DFIR\\Desktop\\H9_rewritng\\memoryRules.yml", "rb");
@@ -97,7 +75,9 @@ int main() {
 
 	}
 	printLineByLineFromHeapMemory();
-	
+
+	fileLines;
+	return 0;
 }
 
 
