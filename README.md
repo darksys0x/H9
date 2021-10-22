@@ -1,3 +1,3 @@
 # H9
 
-Automatic dynamic malware detection
+Automatic dynamic malware detection tool
