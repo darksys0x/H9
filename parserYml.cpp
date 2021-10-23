@@ -27,7 +27,7 @@ void printLineByLineFromHeapMemory( ) {
 			currentIndex = 0;
 
 			printf("%s\n", line);
-			strncpy(fileLines[totalLines], line, strlen(line)+1);//strlen(line)+1 = that's mean hamad+nullTremantel
+			strncpy(fileLines[totalLines], line, strlen(line)+1);//strlen(line)+1 = that's mean string+nullTremantel
 			//sprintf(fileLines[totalLines], "%s", line);
 			totalLines++;
 			
