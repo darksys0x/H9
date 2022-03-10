@@ -134,7 +134,7 @@ DWORD getProcessIDByName(PCTSTR Pname) {
 	pe.dwSize = sizeof(PROCESSENTRY32);
 	BOOL p = Process32First(readProcess, &pe);
 	DWORD proceeID = 0;
-	while (p == TRUE) // when can i used the == true or not and why>
+	while (p == TRUE) 
 
 	{
 		if (StrStrIW(pe.szExeFile, Pname)) {
