@@ -193,7 +193,7 @@ DWORD GetBaseAddress(HANDLE oP) {
 
 
 }
-//why don't use here a "&"  withe hamdleprocess?
+
 void DetectSuspiciousFunctionAProcess(DWORD baseAddessOfExe, HANDLE handleProcess) {
 	//IMAGE_Dos
 	IMAGE_DOS_HEADER DosHeader;
