@@ -18,16 +18,17 @@ void LoopThroughAllMemoryProcesses() {
 	HANDLE allprocess = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
 	PROCESSENTRY32 pe;
 	pe.dwSize = sizeof(PROCESSENTRY32);
-	
+	DWORD processCpount = 0;
 	BOOL p = Process32First(allprocess, &pe);
 
 	while (p) {
 		
 		printf("the process Name %d\n", pe.th32ProcessID);
+		processCpount += 1;
 		DetectSuspiciousFunction(pe.th32ProcessID);
 		p = Process32Next(allprocess, &pe);
 	}
-		
+	printf("there are %d process are running in memory\n", processCpount);
 	CloseHandle(allprocess);
 	
 }
