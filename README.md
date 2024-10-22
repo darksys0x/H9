@@ -1,4 +1,4 @@
-# H9 Memorey tool
+# H9 Memorey Tool
 
 ## Overview
 
