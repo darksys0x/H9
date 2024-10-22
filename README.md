@@ -41,5 +41,4 @@ By using a rule-based methodology, **H9** enables a highly precise and targeted 
 Upcoming features for **H9** include:
 
 - Enhanced rule customization for specific threat environments.
-- Integration with threat intelligence platforms for rule updates.
 - Improved detection of obfuscated and encrypted API calls.
